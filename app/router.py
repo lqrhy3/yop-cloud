@@ -16,10 +16,14 @@ Classes and Functions:
 - router: An instance of `APIRouter` that groups and registers API endpoints.
 - Individual route handlers for various API actions, such as CRUD operations.
 """
-from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+import os
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Request, Path, status
+from fastapi.responses import JSONResponse, FileResponse
 
 from app import services
+from app import settings
 
 
 router = APIRouter(tags=["files"])
@@ -37,19 +41,28 @@ async def upload_file(request: Request):
     200:
         {
             "file_name": "sanjar's dickpick",
-            "message": "Upload successful",
-            "status_code": 200
-        }
-    400:
-        {
-            "message": "No content-disposition header",
-            "status_code": 400
-        }
-    500:
-        {
-            "message": "Internal Server Error",
-            "status_code": 500
+            "message": "Upload successful"
         }
     """
     file_name = await services.save_file(request)
-    return JSONResponse({"filename": file_name, "message": "Upload successful"})
+    return JSONResponse({"file_name": file_name, "message": "Upload successful"})
+
+
+@router.get("/download/{file_name:path}", response_class=FileResponse)
+async def download_file(file_name: str):
+    """
+    Download a file from disk.
+
+    :param file_name: File to download.
+    :return: Asynchronously streams a file as the response.
+    404:
+        {
+            "detail": "File not found"
+        }
+    """
+    file_path = os.path.join(settings.UPLOAD_DIR, file_name)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    return FileResponse(file_path)

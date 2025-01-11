@@ -79,7 +79,7 @@ async def save_file(request: Request) -> str:
     Sanjar mustn't get a token for our service.
 
     :param request: FastAPI Request object. See https://fastapi.tiangolo.com/reference/request/#request-class
-    :return:
+    :return: (str) File name of saved file.
     """
     content_disposition = request.headers.get("content-disposition")
     if not content_disposition:
@@ -103,7 +103,3 @@ async def save_file(request: Request) -> str:
             await f.write(chunk)
 
     return file_name
-
-
-async def get_file():
-    ...
