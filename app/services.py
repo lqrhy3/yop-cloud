@@ -1,4 +1,26 @@
-import os.path
+"""
+services.py
+
+This module contains the business logic and service functions for the FastAPI application.
+It acts as an intermediary layer between the API routes and the underlying data layer (e.g., database).
+
+Purpose:
+--------
+The `services.py` file is designed to:
+1. Encapsulate business logic and complex operations.
+2. Provide reusable functions for API route handlers to reduce redundancy.
+3. Interact with database models, third-party APIs, or other external services.
+4. Handle error cases, validations, and transformations before returning data to the API layer.
+
+Functions:
+----------
+This file may include functions such as:
+- CRUD operations for interacting with database models.
+- Validation or transformation of input and output data.
+- Calls to external APIs or services.
+- Implementation of core application logic.
+"""
+import os
 import re
 
 import aiofiles
