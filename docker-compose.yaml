@@ -7,6 +7,7 @@ services:
             - "8080:80"
         volumes:
             - ./:/app
+            - ./uploaded_files:/uploaded_files
         restart: unless-stopped
     db:
         image: postgres:14
@@ -21,4 +22,5 @@ services:
         restart: unless-stopped
 
 volumes:
+    uploaded_files:
     postgres_data:
