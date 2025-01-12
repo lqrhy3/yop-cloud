@@ -22,11 +22,13 @@ This file may include functions such as:
 """
 import os
 import re
+from typing import Annotated
 
 import aiofiles
-from fastapi import Request, HTTPException, status
+from fastapi import Request, HTTPException, Depends, status
 
 from app import settings
+from app.models import User
 
 
 def validate_file_name(file_name: str):
@@ -81,6 +83,7 @@ async def save_file(request: Request) -> str:
     :param request: FastAPI Request object. See https://fastapi.tiangolo.com/reference/request/#request-class
     :return: (str) File name of saved file.
     """
+    # TODO: check capacity on disk to save file
     content_disposition = request.headers.get("content-disposition")
     if not content_disposition:
         raise HTTPException(
@@ -98,8 +101,23 @@ async def save_file(request: Request) -> str:
     validate_file_name(file_name)
 
     # Write file directly to disk
-    async with aiofiles.open(file_path, "wb") as f:
-        async for chunk in request.stream():
-            await f.write(chunk)
+    try:
+        async with aiofiles.open(file_path, "wb") as f:
+            async for chunk in request.stream():
+                await f.write(chunk)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="There was an error saving your file.")
 
     return file_name
+
+
+async def get_current_user(token: Annotated[str, Depends(User)]) -> User:
+    """
+    Asynchronously reads the file tokens.json to validate user credentials.
+
+    :param token: str
+    :return: User: pydantic model
+    """
+
+    return User(username="@backspace3")

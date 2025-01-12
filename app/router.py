@@ -19,9 +19,10 @@ Classes and Functions:
 import os
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Path, status
 from fastapi.responses import JSONResponse, FileResponse
 
+from app.models import User
 from app import services
 from app import settings
 
@@ -32,9 +33,7 @@ router = APIRouter(tags=["files"])
 @router.post("/upload/")
 async def upload_file(request: Request):
     """
-    Upload a file to disk. It can stores file of any type.
-    TODO: Add docstring
-    TODO: Add auth (Create a token for Sanjar which doesn't work)
+    Upload a file to disk. It can store file of any type.
 
     :param request: FastAPI Request object. See https://fastapi.tiangolo.com/reference/request/#request-class
     :return:
@@ -63,6 +62,9 @@ async def download_file(file_name: str):
     file_path = os.path.join(settings.UPLOAD_DIR, file_name)
 
     if not os.path.exists(file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    if not os.path.isfile(file_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
     return FileResponse(file_path)
