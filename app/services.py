@@ -87,9 +87,9 @@ def resolve_paths(file_path: str, is_archive: bool = False) -> tuple[str, str]:
     return file_name, file_path
 
 
-def clean_archive(path_to_archive: str) -> None:
-    if os.path.exists(path_to_archive):
-        os.remove(path_to_archive)
+def clean_file(path_to_file: str) -> None:
+    if os.path.exists(path_to_file):
+        os.remove(path_to_file)
 
 
 async def unzip_folder(path: str) -> tuple[bytes, bytes]:
@@ -112,12 +112,12 @@ async def unzip_folder(path: str) -> tuple[bytes, bytes]:
             stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await unzip_task.communicate()
-        clean_archive(path_to_archive=path)
         return stdout, stderr
     except Exception:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail="Failed to unzip uploaded folder.")
-
+    finally:
+        clean_file(path_to_file=path)
 
 async def save_file(request: Request) -> str:
     """
