@@ -322,3 +322,6 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/macos,python,intellij
 
 uploaded_files/
+
+# Access credentials of the goats
+tokens.json
