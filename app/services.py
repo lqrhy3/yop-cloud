@@ -104,6 +104,7 @@ async def unzip_folder(path: str) -> tuple[bytes, bytes]:
             stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await unzip_task.communicate()
+        os.remove(path)
         return stdout, stderr
     except Exception:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
