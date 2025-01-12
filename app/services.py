@@ -23,19 +23,18 @@ This file may include functions such as:
 import os
 import re
 from typing import Annotated
-from logging import getLogger
 
 import aiofiles
 import asyncio
 
 from fastapi import Request, HTTPException, Depends, status
-from logging import getLogger
 
 from app import settings
+from app.logger import get_logger
 from app.models import User
 
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def validate_file_name(file_name: str):
@@ -159,9 +158,6 @@ async def save_file(request: Request) -> str:
 
     if is_archive:
         stdout, stderr = await unzip_folder(file_path)
-
-        if stdout:
-            logger.info(f"Unzipping successful: {stdout}")
 
         if stderr:
             logger.warning(f"Unzipping failed: {stderr}")

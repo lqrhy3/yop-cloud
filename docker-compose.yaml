@@ -5,8 +5,6 @@ services:
         build: .
         ports:
             - "8080:80"
-        env_file:
-            - .app.env
         volumes:
             - ./logs:/logs
             - ./uploaded_files:/uploaded_files
