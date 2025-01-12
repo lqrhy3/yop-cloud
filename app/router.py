@@ -69,3 +69,20 @@ async def download_file(file_name: str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
     return FileResponse(file_path)
+
+
+@router.get("/{file_path:path}")
+def ls(file_path: str):
+    """
+    :param file_path: File to ls.
+    :return: list[str]: List of file paths.
+    """
+    base_path = os.path.join(settings.UPLOAD_DIR, file_path)
+
+    if not os.path.exists(base_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    if os.path.isdir(base_path):
+        return os.listdir(base_path)
+    else:
+        return [os.path.basename(file_path)]
