@@ -5,21 +5,16 @@ services:
         build: .
         ports:
             - "8080:80"
+        env_file:
+            - .app.env
         volumes:
-            - ./:/app
+            - ./logs:/logs
             - ./uploaded_files:/uploaded_files
         restart: unless-stopped
-    db:
-        image: postgres:14
-        ports:
-            - "5432:5432"
-        environment:
-            POSTGRES_USER: postgres
-            POSTGRES_PASSWORD: postgres
-            POSTGRES_DB: postgres
-        volumes:
-            - postgres_data:/var/lib/postgresql/data
-        restart: unless-stopped
+    tg-bot:
+        image: lqrhy3/yop-cloud-telegram-bot:latest
+        env_file:
+            - .tg-bot.env
 
 volumes:
     uploaded_files:

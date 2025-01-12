@@ -1,9 +1,8 @@
 import json
 import aiofiles
-from typing import Union
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from app.router import router
@@ -47,8 +46,3 @@ async def add_process_time_header(request: Request, call_next):
             return response
     else:
         return JSONResponse(content={"detail": "Not authenticated"}, status_code=status.HTTP_401_UNAUTHORIZED)
-
-
-@app.get("/")
-async def root():
-    return {"Hello": "World"}

@@ -17,16 +17,15 @@ Classes and Functions:
 - Individual route handlers for various API actions, such as CRUD operations.
 """
 import os
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Path, status
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, FileResponse
 
-from app.models import User
+from app.logger import get_logger
 from app import services
 from app import settings
 
-
+logger = get_logger(__name__)
 router = APIRouter(tags=["files"])
 
 
@@ -44,6 +43,7 @@ async def upload_file(request: Request):
             "message": "Upload successful"
         }
     """
+    logger.info("Called /upload")
     file_name = await services.save_file(request)
     return JSONResponse({"file_name": file_name, "message": "Upload successful"})
 
@@ -60,6 +60,7 @@ async def download_file(file_name: str):
             "detail": "File not found"
         }
     """
+    logger.info("Called /download", extra={"file_name": file_name})
     file_path = os.path.join(settings.UPLOAD_DIR, file_name)
 
     if not os.path.exists(file_path):
@@ -78,6 +79,7 @@ def ls(file_path: str):
     :return: list[str]: List of file paths.
     """
     base_path = os.path.join(settings.UPLOAD_DIR, file_path)
+    logger.info('Called /ls', extra={"file_path": file_path})
 
     if not os.path.exists(base_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
