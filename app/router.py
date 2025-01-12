@@ -22,9 +22,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Path, status
 from fastapi.responses import JSONResponse, FileResponse
 
-from app.models import User
 from app import services
 from app import settings
+from app.models import User
+from app.exceptions import FileNotFound
 
 
 router = APIRouter(tags=["files"])
@@ -62,11 +63,8 @@ async def download_file(file_name: str):
     """
     file_path = os.path.join(settings.UPLOAD_DIR, file_name)
 
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-
-    if not os.path.isfile(file_path):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    if not os.path.exists(file_path) or not os.path.isfile(file_path):
+        raise FileNotFound
 
     return FileResponse(file_path)
 
@@ -80,7 +78,7 @@ def ls(file_path: str):
     base_path = os.path.join(settings.UPLOAD_DIR, file_path)
 
     if not os.path.exists(base_path):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        raise FileNotFound
 
     if os.path.isdir(base_path):
         return os.listdir(base_path)

@@ -7,6 +7,7 @@ from fastapi import FastAPI, Depends, Request, status
 from fastapi.responses import JSONResponse
 
 from app.router import router
+from app.exceptions import Unauthorized
 
 
 @asynccontextmanager
@@ -37,7 +38,7 @@ async def add_process_time_header(request: Request, call_next):
     :return:
     """
     if "authorization" not in request.headers:
-        return JSONResponse(content={"detail": "Not authenticated"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        return Unauthorized
 
     token = request.headers["authorization"].split(" ")[-1]
 
@@ -46,7 +47,7 @@ async def add_process_time_header(request: Request, call_next):
             response = await call_next(request)
             return response
     else:
-        return JSONResponse(content={"detail": "Not authenticated"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        return Unauthorized
 
 
 @app.get("/")
