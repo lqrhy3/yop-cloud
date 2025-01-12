@@ -18,12 +18,13 @@ Classes and Functions:
 """
 import os
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, FileResponse
 
 from app.logger import get_logger
 from app import services
 from app import settings
+from app.exceptions import FileNotFound
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["files"])
@@ -63,11 +64,8 @@ async def download_file(file_name: str):
     logger.info("Called /download", extra={"file_name": file_name})
     file_path = os.path.join(settings.UPLOAD_DIR, file_name)
 
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-
-    if not os.path.isfile(file_path):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    if not os.path.exists(file_path) or not os.path.isfile(file_path):
+        raise FileNotFound
 
     return FileResponse(file_path)
 
@@ -82,7 +80,7 @@ def ls(file_path: str):
     logger.info('Called /ls', extra={"file_path": file_path})
 
     if not os.path.exists(base_path):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        raise FileNotFound
 
     if os.path.isdir(base_path):
         return os.listdir(base_path)

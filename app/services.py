@@ -119,6 +119,7 @@ async def unzip_folder(path: str) -> tuple[bytes, bytes]:
     finally:
         clean_file(path_to_file=path)
 
+
 async def save_file(request: Request) -> str:
     """
     This function saves a file of any content-type to our 10TB storage YOP service.
