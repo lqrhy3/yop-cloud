@@ -86,6 +86,10 @@ def ls(file_path: str):
         raise FileNotFound
 
     if os.path.isdir(base_path):
-        return os.listdir(base_path)
+        listdir = os.listdir(base_path)
+        return [
+            {'file_name': file, 'file_type': 'folder' if os.path.isdir(os.path.join(base_path, file)) else 'file'}
+            for file in listdir
+        ]
     else:
-        return [os.path.basename(file_path)]
+        return [{'file_name': os.path.basename(file_path), 'file_type': 'file'}]
