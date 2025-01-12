@@ -64,8 +64,11 @@ async def download_file(file_name: str):
     logger.info("Called /download", extra={"file_name": file_name})
     file_path = os.path.join(settings.UPLOAD_DIR, file_name)
 
-    if not os.path.exists(file_path) or not os.path.isfile(file_path):
+    if not os.path.exists(file_path):
         raise FileNotFound
+
+    if os.path.isdir(file_path):
+        file_path = await services.archive_directory(file_path)
 
     return FileResponse(file_path)
 
