@@ -177,3 +177,37 @@ async def get_current_user(token: Annotated[str, Depends(User)]) -> User:
     """
 
     return User(username="@backspace3")
+
+
+async def archive_directory(dir_path: str) -> str:
+    """
+    Create a tar.gz archive from a directory.
+
+    :param dir_path: Path to the source directory.
+    :return: str: Path to the created archive tar.gz file.
+    """
+    parent_dir_path, dir_name = os.path.split(dir_path)
+
+    zip_file_name = f".{dir_name}.tar.gz"
+    file_path = os.path.join(parent_dir_path, zip_file_name)
+
+    zip_command = f"tar -cz --no-xattrs -f {file_path} -C {dir_path} ."
+
+    try:
+        zip_task = await asyncio.create_subprocess_shell(
+            cmd=zip_command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await zip_task.communicate()
+
+        if stderr:
+            logger.warning(f"{zip_command}")
+            logger.warning(f"Failed to archive folder: {stderr}")
+            raise Exception
+
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Failed to zip folder for downloading")
+
+    return file_path
