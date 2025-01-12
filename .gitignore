@@ -325,3 +325,6 @@ uploaded_files/
 
 # Access credentials of the goats
 tokens.json
+
+# Logs
+logs/

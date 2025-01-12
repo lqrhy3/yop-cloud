@@ -9,6 +9,7 @@ services:
             - ./logs:/logs
             - ./uploaded_files:/uploaded_files
         restart: unless-stopped
+
     tg-bot:
         image: lqrhy3/yop-cloud-telegram-bot:latest
         env_file:
@@ -16,4 +17,3 @@ services:
 
 volumes:
     uploaded_files:
-    postgres_data:
