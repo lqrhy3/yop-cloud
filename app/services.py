@@ -87,6 +87,11 @@ def resolve_paths(file_path: str, is_archive: bool = False) -> tuple[str, str]:
     return file_name, file_path
 
 
+def clean_archive(path_to_archive: str) -> None:
+    if os.path.exists(path_to_archive):
+        os.remove(path_to_archive)
+
+
 async def unzip_folder(path: str) -> tuple[bytes, bytes]:
     """
     Unzip uploaded folder into specified directory.
@@ -94,7 +99,10 @@ async def unzip_folder(path: str) -> tuple[bytes, bytes]:
     :param path: Path to unzip folder.
     :return: bytes, bytes
     """
-    dir_path, _ = os.path.split(path)
+    parent_dir_path, dir_name = os.path.split(path)
+    dir_name = dir_name.replace(".tar.gz", "")[1:]
+    dir_path = os.path.join(parent_dir_path, dir_name)
+
     unzip_command = f"tar -xf {path} -C {dir_path}"
 
     try:
@@ -104,7 +112,7 @@ async def unzip_folder(path: str) -> tuple[bytes, bytes]:
             stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await unzip_task.communicate()
-        os.remove(path)
+        clean_archive(path_to_archive=path)
         return stdout, stderr
     except Exception:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
