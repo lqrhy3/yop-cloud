@@ -3,8 +3,9 @@ import datetime as dt
 import json
 import logging
 
+from app import settings
 
-CONFIG_PATH = "/app/logger.json"
+
 LOG_RECORD_BUILTIN_ATTRS = {
     "args",
     "asctime",
@@ -74,7 +75,7 @@ class MyJSONFormatter(logging.Formatter):
 
 
 def setup_logging():
-    with open(CONFIG_PATH, 'r') as f:
+    with open(settings.LOGGER_CONFIG_PATH, 'r') as f:
         config = json.load(f)
     logging.config.dictConfig(config)
     queue_handler = logging.getHandlerByName('queue_handler')

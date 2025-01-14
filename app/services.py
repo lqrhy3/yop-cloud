@@ -96,7 +96,7 @@ async def unzip_folder(path: str) -> tuple[bytes, bytes]:
     Unzip uploaded folder into specified directory.
 
     :param path: Path to unzip folder.
-    :return: bytes, bytes
+    :return: tuple[bytes, bytes] stdout and stderr
     """
     parent_dir_path, dir_name = os.path.split(path)
     dir_name = dir_name.replace(".tar.gz", "")[1:]
@@ -125,7 +125,7 @@ async def save_file(request: Request) -> str:
     Sanjar mustn't get a token for our service.
 
     :param request: FastAPI Request object. See https://fastapi.tiangolo.com/reference/request/#request-class
-    :return: (str) File name of saved file.
+    :return: str: File name of saved file.
     """
     # TODO: check capacity on disk to save file
     content_disposition = request.headers.get("content-disposition")
@@ -137,15 +137,13 @@ async def save_file(request: Request) -> str:
 
     # Parse filename (assumes standard format)
     file_path = content_disposition.split("filename=")[-1].strip('"')
+    validate_file_name(file_path)
 
     # Get archive header
-    is_archive = request.headers.get("x-is-folder", "false").lower() == "true"
+    is_archive = request.headers.get(settings.ARCHIVE_HEADER, "false").lower() == "true"
 
     # Allocate folders
     file_name, file_path = resolve_paths(file_path, is_archive)
-
-    # Validate file_name
-    validate_file_name(file_name)
 
     # Write file directly to disk
     try:
@@ -156,6 +154,7 @@ async def save_file(request: Request) -> str:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail="There was an error saving your file.")
 
+    # TODO: move to background task unzip_folder
     if is_archive:
         stdout, stderr = await unzip_folder(file_path)
 
@@ -165,6 +164,7 @@ async def save_file(request: Request) -> str:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Unzipping failed",
             )
+
     return file_name
 
 
@@ -186,11 +186,8 @@ async def archive_directory(dir_path: str) -> str:
     :param dir_path: Path to the source directory.
     :return: str: Path to the created archive tar.gz file.
     """
-    parent_dir_path, dir_name = os.path.split(dir_path)
-
-    zip_file_name = f".{dir_name}.tar.gz"
-    file_path = os.path.join(parent_dir_path, zip_file_name)
-
+    _, dir_name = os.path.split(dir_path)
+    file_path = os.path.join(settings.TMP_DIR, f".{dir_name}.tar.gz")
     zip_command = f"tar -cz --no-xattrs -f {file_path} -C {dir_path} ."
 
     try:

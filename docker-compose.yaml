@@ -6,6 +6,7 @@ services:
         ports:
             - "8080:80"
         volumes:
+            - ./:/app
             - ./logs:/logs
             - ./uploaded_files:/uploaded_files
         restart: unless-stopped
@@ -17,3 +18,4 @@ services:
 
 volumes:
     uploaded_files:
+    logs:
