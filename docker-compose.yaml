@@ -4,17 +4,26 @@ services:
     app:
         build: .
         ports:
-            - "8080:80"
+            - "8080:8080"
         volumes:
             - ./:/app
             - ./logs:/logs
             - ./uploaded_files:/uploaded_files
         restart: unless-stopped
 
-    tg-bot:
-        image: lqrhy3/yop-cloud-telegram-bot:latest
-        env_file:
-            - .tg-bot.env
+    nginx:
+        image: nginx:alpine
+        ports:
+            - "80:80"
+        volumes:
+            - ./nginx:/etc/nginx/conf.d:ro
+        depends_on:
+            - app
+
+#    tg-bot:
+#        image: lqrhy3/yop-cloud-telegram-bot:latest
+#        env_file:
+#            - .tg-bot.env
 
 volumes:
     uploaded_files:
