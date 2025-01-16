@@ -22,16 +22,24 @@ This file may include functions such as:
 """
 import os
 import re
+import shutil
 from typing import Annotated
 
 import aiofiles
 import asyncio
 
-from fastapi import Request, HTTPException, Depends, status
+from fastapi import (
+    BackgroundTasks,
+    Request,
+    HTTPException,
+    Depends,
+    status,
+)
 
 from app import settings
+from app.exceptions import FileNotFound
 from app.logger import get_logger
-from app.models import User
+from app.models import File, FileType, SIZE_UNITS
 
 
 logger = get_logger(__name__)
@@ -48,7 +56,7 @@ def validate_file_name(file_name: str):
 
     # Check if the file name is empty or None
     if not file_name:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File name cannot be empty.")
+        raise FileNotFound
 
     if not re.match(pattern, file_name):
         raise HTTPException(
@@ -72,7 +80,7 @@ def resolve_paths(file_path: str, is_archive: bool = False) -> tuple[str, str]:
     Create folder structure based on file name.
 
     :param file_path: File path to create folder structure for.
-    :param is_archive: Boolean flag indicating if file is archived folder.
+    :param is_archive: Boolean flag indicating if file is archived.
     :return: tuple[str, str] file_name, dir_path
     """
     dir_path, file_name = os.path.split(file_path)
@@ -86,9 +94,29 @@ def resolve_paths(file_path: str, is_archive: bool = False) -> tuple[str, str]:
     return file_name, file_path
 
 
-def clean_file(path_to_file: str) -> None:
-    if os.path.exists(path_to_file):
-        os.remove(path_to_file)
+def clean_file(file_path: str) -> None:
+    """
+    Deletes a file from disk if it exists.
+
+    :param file_path:
+    :return: None
+    """
+    validate_file_name(file_path)
+
+    if not file_path.startswith(settings.UPLOAD_DIR):
+        file_path = os.path.join(settings.UPLOAD_DIR, file_path)
+
+    if not os.path.exists(file_path):
+        raise FileNotFound
+
+    if os.path.isfile(file_path):
+        os.remove(file_path)
+        logger.info(f"Removed {file_path}")
+    elif os.path.isdir(file_path):
+        shutil.rmtree(file_path)
+        logger.info(f"Removed {file_path}")
+    else:
+        logger.info(f"The path '{file_path}' is neither a file nor a directory. What is it?")
 
 
 async def unzip_folder(path: str) -> tuple[bytes, bytes]:
@@ -116,7 +144,7 @@ async def unzip_folder(path: str) -> tuple[bytes, bytes]:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail="Failed to unzip uploaded folder.")
     finally:
-        clean_file(path_to_file=path)
+        clean_file(file_path=path)
 
 
 async def save_file(request: Request) -> str:
@@ -168,27 +196,24 @@ async def save_file(request: Request) -> str:
     return file_name
 
 
-async def get_current_user(token: Annotated[str, Depends(User)]) -> User:
+async def archive_file(file_path: str) -> str:
     """
-    Asynchronously reads the file tokens.json to validate user credentials.
+    Create a .tar.gz archive.
 
-    :param token: str
-    :return: User: pydantic model
+    :param file_path: Path to the source file.
+    :return: str: Path to the created archive file.
     """
+    _, file_name = os.path.split(file_path)
 
-    return User(username="@backspace3")
+    tmp_archive_path = os.path.join(settings.TMP_DIR, f".{dir_name}.tar.gz")
 
+    zip_command = f"tar -cz --no-xattrs -f {tmp_archive_path} "
+    options = file_path
 
-async def archive_directory(dir_path: str) -> str:
-    """
-    Create a tar.gz archive from a directory.
+    if os.path.isdir(file_path):
+        options = f"-C {options} ."
 
-    :param dir_path: Path to the source directory.
-    :return: str: Path to the created archive tar.gz file.
-    """
-    _, dir_name = os.path.split(dir_path)
-    file_path = os.path.join(settings.TMP_DIR, f".{dir_name}.tar.gz")
-    zip_command = f"tar -cz --no-xattrs -f {file_path} -C {dir_path} ."
+    zip_command += options
 
     try:
         zip_task = await asyncio.create_subprocess_shell(
@@ -208,3 +233,84 @@ async def archive_directory(dir_path: str) -> str:
                             detail="Failed to zip folder for downloading")
 
     return file_path
+
+
+async def download_file(file_name: str, background_tasks: BackgroundTasks) -> str:
+    """
+    Download a file from our 10TB storage YOP service.
+
+    :param file_name: File to download.
+    :param background_tasks: FastAPI BackgroundTasks object. See https://fastapi.tiangolo.com/tutorial/background-tasks/#using-backgroundtasks
+    :return: file_path: Path to the downloaded file.
+    """
+    validate_file_name(file_name)
+
+    file_path = os.path.join(settings.UPLOAD_DIR, file_name)
+
+    if not os.path.exists(file_path):
+        raise FileNotFound
+
+    if needs_to_be_archived(file_path):
+        file_path = await archive_file(file_path)
+        background_tasks.add_task(clean_file, file_path)
+
+    return file_path
+
+
+def get_size(path: str, human: bool = False) -> int | str:
+    file_size = os.path.getsize(path)
+    if not human:
+        return file_size
+
+    i = 0
+    while file_size > 1024:
+        i += 1
+        file_size = file_size / 1024
+    return f"{int(file_size) if i == 0 else f"{file_size:.2f}"} {SIZE_UNITS[i]}"
+
+
+async def ls(file_path: str) -> list[File]:
+    """
+    Show directory contents.
+
+    :param file_path:
+    :return:
+    """
+    base_path = os.path.join(settings.UPLOAD_DIR, file_path)
+
+    if not os.path.exists(base_path):
+        raise FileNotFound
+
+    if os.path.isdir(base_path):
+        listdir = os.listdir(base_path)
+        return [
+            File(
+                name=file,
+                type=FileType.FOLDER if os.path.isdir(os.path.join(base_path, file)) else FileType.FILE,
+                size=get_size(os.path.join(base_path, file)),
+                size_human=get_size(os.path.join(base_path, file), human=True),
+            )
+            for file in listdir
+        ]
+    else:
+        return [
+            File(
+                name=os.path.basename(file_path),
+                type=FileType.FILE,
+                size=get_size(base_path),
+                size_human=get_size(base_path, human=True)
+            )
+        ]
+
+
+def needs_to_be_archived(file_path: str) -> bool:
+    """
+    TODO: write logic
+
+    :param file_path:
+    :return:
+    """
+    if os.path.isdir(file_path):
+        return True
+
+    return False

@@ -18,12 +18,11 @@ Classes and Functions:
 """
 import os
 
-from fastapi import APIRouter, Request, BackgroundTasks
+from fastapi import APIRouter, Request, Response, BackgroundTasks, status
 from fastapi.responses import JSONResponse, FileResponse
 
 from app.logger import get_logger
-from app import services
-from app import settings
+from app import (services, settings, models)
 from app.exceptions import FileNotFound
 
 logger = get_logger(__name__)
@@ -55,7 +54,7 @@ async def download_file(file_name: str, background_tasks: BackgroundTasks):
     Download a file from disk. Creates .tar.gz archive if downloaded file is folder.
 
     :param file_name: File to download.
-    :param background_tasks: FastAPI Background Tasks object. See https://fastapi.tiangolo.com/tutorial/background-tasks/#using-backgroundtasks
+    :param background_tasks: FastAPI BackgroundTasks object. See https://fastapi.tiangolo.com/tutorial/background-tasks/#using-backgroundtasks
     :return: Asynchronously streams a file as the response.
     404:
         {
@@ -63,38 +62,29 @@ async def download_file(file_name: str, background_tasks: BackgroundTasks):
         }
     """
     logger.info("Called /download", extra={"file_name": file_name})
-
-    if not file_name:
-        raise FileNotFound
-
-    file_path = os.path.join(settings.UPLOAD_DIR, file_name)
-
-    if not os.path.exists(file_path):
-        raise FileNotFound
-
-    if os.path.isdir(file_path):
-        file_path = await services.archive_directory(file_path)
-        background_tasks.add_task(services.clean_file, file_path)
+    file_path = await services.download_file(file_name, background_tasks)
     return FileResponse(file_path)
 
 
-@router.get("/{file_path:path}")
-def ls(file_path: str):
+@router.delete("/delete/{file_path:path}")
+def delete_file(file_path: str, background_tasks: BackgroundTasks):
+    """
+    God help me.
+
+    :param file_path: File to delete.
+    :param background_tasks: FastAPI BackgroundTasks object.
+    :return: no content
+    """
+    logger.info("Called /delete", extra={"file_path": file_path})
+    background_tasks.add_task(services.clean_file, file_path)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{file_path:path}", response_model=list[models.File])
+async def ls(file_path: str) -> list[models.File]:
     """
     :param file_path: File to ls.
-    :return: list[str]: List of file paths.
+    :return: list[File]: List of file paths.
     """
     logger.info("Called /ls", extra={"file_path": file_path})
-    base_path = os.path.join(settings.UPLOAD_DIR, file_path)
-
-    if not os.path.exists(base_path):
-        raise FileNotFound
-
-    if os.path.isdir(base_path):
-        listdir = os.listdir(base_path)
-        return [
-            {"file_name": file, "file_type": "folder" if os.path.isdir(os.path.join(base_path, file)) else "file"}
-            for file in listdir
-        ]
-    else:
-        return [{"file_name": os.path.basename(file_path), "file_type": "file"}]
+    return await services.ls(file_path)
