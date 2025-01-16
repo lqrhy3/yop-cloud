@@ -25,6 +25,7 @@ from app.logger import get_logger
 from app import (services, settings, models)
 from app.exceptions import FileNotFound
 
+
 logger = get_logger(__name__)
 router = APIRouter(tags=["files"])
 

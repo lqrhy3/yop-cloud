@@ -101,7 +101,8 @@ def clean_file(file_path: str) -> None:
     :param file_path:
     :return: None
     """
-    validate_file_name(file_path)
+    file_name = os.path.basename(file_path)
+    validate_file_name(file_name)
 
     if not file_path.startswith(settings.UPLOAD_DIR):
         file_path = os.path.join(settings.UPLOAD_DIR, file_path)
@@ -160,12 +161,13 @@ async def save_file(request: Request) -> str:
     if not content_disposition:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No content-disposition header",
+            detail="No Content-Disposition header",
         )
 
     # Parse filename (assumes standard format)
     file_path = content_disposition.split("filename=")[-1].strip('"')
-    validate_file_name(file_path)
+    file_name = os.path.basename(file_path)
+    validate_file_name(file_name)
 
     # Get archive header
     is_archive = request.headers.get(settings.ARCHIVE_HEADER, "false").lower() == "true"
