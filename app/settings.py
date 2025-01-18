@@ -14,8 +14,8 @@ It contains configurations and settings used by the Django project. These includ
 
 """
 
-UPLOAD_DIR = '/uploaded_files'
-TMP_DIR = '/tmp'
+UPLOAD_DIR = '/storage'
+TMP_DIR = '/tmp/storage'
 LOGGER_CONFIG_PATH = '/app/logger.json'
 ARCHIVE_HEADER = 'X-Is-Archive'
 ARCHIVE_EXTENSION = '.tar.gz'

@@ -7,9 +7,8 @@ services:
             - "8080:8080"
         volumes:
             - ./:/app
-            - ${STORAGE_PATH}:/storage
+            - ${STORAGE_DATA_PATH}:/storage
             - ./logs:/logs
-        restart: unless-stopped
 
     nginx:
         image: nginx:alpine

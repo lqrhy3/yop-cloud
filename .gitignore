@@ -327,6 +327,7 @@ uploaded_files/
 tokens.json
 
 .env
+bruno/
 
 # Logs
 logs/

@@ -16,18 +16,27 @@ Classes and Functions:
 - router: An instance of `APIRouter` that groups and registers API endpoints.
 - Individual route handlers for various API actions, such as CRUD operations.
 """
-import os
 
 from fastapi import APIRouter, Request, Response, BackgroundTasks, status
 from fastapi.responses import JSONResponse, FileResponse
 
 from app.logger import get_logger
 from app import (services, settings, models)
-from app.exceptions import FileNotFound
 
 
 logger = get_logger(__name__)
-router = APIRouter(tags=["files"])
+router = APIRouter()
+
+
+@router.get("/health", status_code=status.HTTP_200_OK)
+async def health_check():
+    """
+    Health check endpoint to verify that the service is running.
+
+    :return: JSON response indicating the health status of the service.
+    """
+    logger.info("Called /health")
+    return JSONResponse({"status": "ok", "message": "Service is running"})
 
 
 @router.post("/upload/")
@@ -40,7 +49,7 @@ async def upload_file(request: Request):
     :return:
     200:
         {
-            "file_name": "sanjar"s dickpick",
+            "file_name": "sanjar's dickpick",
             "message": "Upload successful"
         }
     """
@@ -81,7 +90,7 @@ def delete_file(file_path: str, background_tasks: BackgroundTasks):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/{file_path:path}", response_model=list[models.File])
+@router.get("/ls/{file_path:path}", response_model=list[models.File])
 async def ls(file_path: str) -> list[models.File]:
     """
     :param file_path: File to ls.
