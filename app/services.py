@@ -91,7 +91,7 @@ class FileService:
         logger.debug(f"Moving file from {temp_file_path} to {file_path}")
         try:
             os.rename(temp_file_path, file_path)
-            os.rmdir(temp_dir_path)
+            os.removedirs(temp_dir_path)
         except OSError as e:
             logger.error(f"Failed to move and clean temp file: {str(e)}")
             raise HTTPException(
