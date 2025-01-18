@@ -7,8 +7,8 @@ services:
             - "8080:8080"
         volumes:
             - ./:/app
+            - ${STORAGE_PATH}:/storage
             - ./logs:/logs
-            - ./uploaded_files:/uploaded_files
         restart: unless-stopped
 
     nginx:
@@ -26,5 +26,4 @@ services:
 #            - .tg-bot.env
 
 volumes:
-    uploaded_files:
     logs:

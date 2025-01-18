@@ -75,10 +75,10 @@ class MyJSONFormatter(logging.Formatter):
 
 
 def setup_logging():
-    with open(settings.LOGGER_CONFIG_PATH, 'r') as f:
+    with open(settings.LOGGER_CONFIG_PATH, "r") as f:
         config = json.load(f)
     logging.config.dictConfig(config)
-    queue_handler = logging.getHandlerByName('queue_handler')
+    queue_handler = logging.getHandlerByName("queue_handler")
     if queue_handler is not None:
         queue_handler.listener.start()
         atexit.register(queue_handler.listener.stop)
