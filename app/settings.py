@@ -3,11 +3,11 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     STORAGE_DATA_PATH: str = "/storage_data"
-    TMP_DATA_PATH: str = "/tmp"
+    TEMP_DATA_PATH: str = "/storage_data/.tmp"
 
     MAX_FILE_NAME_LENGTH: int = 256
 
-    ARCHIVE_HEADER: str = "X-Is-Archive"
+    IS_ARCHIVE_HEADER: str = "X-Is-Archive"
 
     ARCHIVE_EXTENSION: str = ".tar.gz"
 

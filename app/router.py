@@ -20,7 +20,7 @@ Classes and Functions:
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, BackgroundTasks, status
 from fastapi.responses import JSONResponse, FileResponse
 
-from app.dependencies import ArchiveServiceDep, FileServiceDep
+from app.dependencies import FileServiceDep
 from app.logger import get_logger
 from app import (services, settings, models)
 
@@ -44,7 +44,6 @@ async def upload_file(
         request: Request,
         background_tasks: BackgroundTasks,
         file_service: FileServiceDep,
-        archive_service: ArchiveServiceDep
 ):
     """
     Upload a file to disk and optionally unzip it.
@@ -52,13 +51,10 @@ async def upload_file(
     logger.info("Called /upload")
 
     try:
-        file_name, file_path, is_archive = await file_service.save_file(request)
+        file_name = await file_service.save_file(request, background_tasks)
     except HTTPException as e:
         logger.error(f"Error saving file: {e.detail}")
         raise
-
-    if is_archive:
-        background_tasks.add_task(archive_service.unzip_file, file_path)
 
     return JSONResponse({
         "file_name": file_name,
@@ -67,12 +63,13 @@ async def upload_file(
 
 
 @router.get("/download/{file_name:path}", response_class=FileResponse)
-async def download_file(file_name: str, background_tasks: BackgroundTasks):
+async def download_file(file_name: str, background_tasks: BackgroundTasks, file_service: FileServiceDep):
     """
     Download a file from disk. Creates .tar.gz archive if downloaded file is folder.
 
     :param file_name: File to download.
     :param background_tasks: FastAPI BackgroundTasks object. See https://fastapi.tiangolo.com/tutorial/background-tasks/#using-backgroundtasks
+    :param file_service: FileService dependency.
     :return: Asynchronously streams a file as the response.
     404:
         {
@@ -80,12 +77,12 @@ async def download_file(file_name: str, background_tasks: BackgroundTasks):
         }
     """
     logger.info("Called /download", extra={"file_name": file_name})
-    file_path = await services.download_file(file_name, background_tasks)
+    file_path = await file_service.download_file(file_name, background_tasks)
     return FileResponse(file_path)
 
 
 @router.delete("/delete/{file_path:path}")
-def delete_file(file_path: str, background_tasks: BackgroundTasks):
+def delete_file(file_path: str, background_tasks: BackgroundTasks, file_service: FileServiceDep):
     """
     God help me.
 
@@ -94,15 +91,16 @@ def delete_file(file_path: str, background_tasks: BackgroundTasks):
     :return: no content
     """
     logger.info("Called /delete", extra={"file_path": file_path})
-    background_tasks.add_task(services.clean_file, file_path)
+    file_service.delete_file(file_path, background_tasks)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/ls/{file_path:path}", response_model=list[models.File])
-async def ls(file_path: str) -> list[models.File]:
+async def ls(file_path: str, file_service: FileServiceDep) -> list[models.File]:
     """
     :param file_path: File to ls.
+    :param file_service: FileService dependency.
     :return: list[File]: List of file paths.
     """
     logger.info("Called /ls", extra={"file_path": file_path})
-    return await services.ls(file_path)
+    return await file_service.list_files(file_path)
