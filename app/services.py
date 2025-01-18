@@ -24,6 +24,7 @@ import os
 import re
 import shutil
 import psutil
+import hashlib
 from typing import Annotated
 
 import aiofiles
@@ -121,7 +122,17 @@ def clean_file(file_path: str) -> None:
         logger.info(f"The path '{file_path}' is neither a file nor a directory. What is it?")
 
 
-async def unzip_folder(path: str) -> tuple[bytes, bytes]:
+async def calculate_file_hash(file_stream):
+    """
+    Calculate SHA-256 hash of a file stream.
+    """
+    hash_obj = hashlib.sha256()
+    async for chunk in file_stream:
+        hash_obj.update(chunk)
+    return hash_obj.hexdigest()
+
+
+async def unzip_archive(path: str):
     """
     Unzip uploaded folder into specified directory.
 
@@ -141,7 +152,12 @@ async def unzip_folder(path: str) -> tuple[bytes, bytes]:
             stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await unzip_task.communicate()
-        return stdout, stderr
+        if stderr:
+            logger.warning(f"Unzipping failed: {stderr}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unzipping failed",
+            )
     except Exception:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail="Failed to unzip uploaded folder.")
@@ -222,15 +238,7 @@ async def save_file(request: Request, background_tasks: BackgroundTasks) -> str:
                             detail="There was an error saving your file.")
 
     if is_archive:
-        background_tasks.add_task(unzip_folder, file_path)
-        # stdout, stderr = await unzip_folder(file_path)
-
-        # if stderr:
-        #     logger.warning(f"Unzipping failed: {stderr}")
-        #     raise HTTPException(
-        #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        #         detail="Unzipping failed",
-        #     )
+        background_tasks.add_task(unzip_archive, file_path)
 
     return file_name
 
@@ -313,6 +321,18 @@ def format_file_size(file_size: int, human: bool = False) -> int | str:
     return f"{int(file_size) if i == 0 else f"{file_size:.2f}"} {SIZE_UNITS[i]}"
 
 
+def get_file_size(path: str, human: bool = False) -> str:
+    """
+    Get size of file in bytes or human readable format.
+
+    :param path: Path to file.
+    :param human: Boolean flag indicating if size should be human readable.
+    :return: int | str: Size of file in bytes or human readable format.
+    """
+    file_size = os.path.getsize(path)
+    return format_file_size(file_size, human)
+
+
 async def ls(file_path: str) -> list[File]:
     """
     Show directory contents.
@@ -331,8 +351,8 @@ async def ls(file_path: str) -> list[File]:
             File(
                 name=file,
                 type=FileType.FOLDER if os.path.isdir(os.path.join(base_path, file)) else FileType.FILE,
-                # size=get_size(os.path.join(base_path, file)),
-                # size_human=get_size(os.path.join(base_path, file), human=True),
+                size=get_file_size(os.path.join(base_path, file)),
+                size_human=get_file_size(os.path.join(base_path, file), human=True),
             )
             for file in listdir
         ]
@@ -341,8 +361,8 @@ async def ls(file_path: str) -> list[File]:
             File(
                 name=os.path.basename(file_path),
                 type=FileType.FILE,
-                # size=get_size(base_path),
-                # size_human=get_size(base_path, human=True)
+                size=get_file_size(base_path),
+                size_human=get_file_size(base_path, human=True)
             )
         ]
 
