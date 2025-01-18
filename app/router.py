@@ -16,8 +16,6 @@ Classes and Functions:
 - router: An instance of `APIRouter` that groups and registers API endpoints.
 - Individual route handlers for various API actions, such as CRUD operations.
 """
-import os
-
 from fastapi import APIRouter, Request, Response, BackgroundTasks, status
 from fastapi.responses import JSONResponse, FileResponse
 
@@ -30,8 +28,8 @@ logger = get_logger(__name__)
 router = APIRouter(tags=["files"])
 
 
-@router.post("/upload/")
-async def upload_file(request: Request):
+@router.post("/upload")
+async def upload_file(request: Request, background_tasks: BackgroundTasks):
     """
     Upload a file to disk. It can store file of any type.
     If the header X-Is-Archive is specified, tmp tar.gz archive will be created and unzipped
@@ -45,7 +43,7 @@ async def upload_file(request: Request):
         }
     """
     logger.info("Called /upload")
-    file_name = await services.save_file(request)
+    file_name = await services.save_file(request, background_tasks)
     return JSONResponse({"file_name": file_name, "message": "Upload successful"})
 
 
@@ -81,7 +79,7 @@ def delete_file(file_path: str, background_tasks: BackgroundTasks):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/{file_path:path}", response_model=list[models.File])
+@router.get("/ls/{file_path:path}", response_model=list[models.File])
 async def ls(file_path: str) -> list[models.File]:
     """
     :param file_path: File to ls.
@@ -89,3 +87,11 @@ async def ls(file_path: str) -> list[models.File]:
     """
     logger.info("Called /ls", extra={"file_path": file_path})
     return await services.ls(file_path)
+
+
+@router.get("/healthy")
+def health_check():
+    """
+    Basic health check endpoint
+    """
+    return services.health_check()

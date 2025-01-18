@@ -23,6 +23,7 @@ This file may include functions such as:
 import os
 import re
 import shutil
+import psutil
 from typing import Annotated
 
 import aiofiles
@@ -148,21 +149,57 @@ async def unzip_folder(path: str) -> tuple[bytes, bytes]:
         clean_file(file_path=path)
 
 
-async def save_file(request: Request) -> str:
+def check_disk_space(file_size: int) -> bool:
     """
-    This function saves a file of any content-type to our 10TB storage YOP service.
-    Sanjar mustn't get a token for our service.
+    Check if there's enough disk space for the upload.
+    
+    :param file_size: Size of file to be uploaded in bytes
+    :return: True if enough space, raises HTTPException if not
+    """
+    try:
+        _, _, free = shutil.disk_usage(settings.UPLOAD_DIR)
+        # Keep 1GB buffer space on disk
+        buffer_space = 1024 * 1024 * 1024  
+        if free - buffer_space < file_size:
+            raise HTTPException(
+                status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+                detail=f"Not enough disk space. Available: {format_file_size(free - buffer_space, human=True)}, "
+                       f"Required: {format_file_size(file_size, human=True)}"
+            )
+        return True
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to check disk space"
+        )
+
+
+async def save_file(request: Request, background_tasks: BackgroundTasks) -> str:
+    """
+    Save file from request stream to disk.
 
     :param request: FastAPI Request object. See https://fastapi.tiangolo.com/reference/request/#request-class
+    :param background_tasks: FastAPI BackgroundTasks object. See https://fastapi.tiangolo.com/tutorial/background-tasks/#using-backgroundtasks
     :return: str: File name of saved file.
     """
-    # TODO: check capacity on disk to save file
     content_disposition = request.headers.get("content-disposition")
-    if not content_disposition:
+    content_length = request.headers.get("content-length")
+
+    if content_disposition is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No Content-Disposition header",
         )
+    if content_length is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No Content-Length header",
+        )
+
+    file_size = int(content_length)
+    check_disk_space(file_size)
 
     # Parse filename (assumes standard format)
     file_path = content_disposition.split("filename=")[-1].strip('"')
@@ -184,16 +221,16 @@ async def save_file(request: Request) -> str:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail="There was an error saving your file.")
 
-    # TODO: move to background task unzip_folder
     if is_archive:
-        stdout, stderr = await unzip_folder(file_path)
+        background_tasks.add_task(unzip_folder, file_path)
+        # stdout, stderr = await unzip_folder(file_path)
 
-        if stderr:
-            logger.warning(f"Unzipping failed: {stderr}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Unzipping failed",
-            )
+        # if stderr:
+        #     logger.warning(f"Unzipping failed: {stderr}")
+        #     raise HTTPException(
+        #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        #         detail="Unzipping failed",
+        #     )
 
     return file_name
 
@@ -205,11 +242,10 @@ async def archive_file(file_path: str) -> str:
     :param file_path: Path to the source file.
     :return: str: Path to the created archive file.
     """
-    _, file_name = os.path.split(file_path)
-
-    tmp_archive_path = os.path.join(settings.TMP_DIR, f".{dir_name}.tar.gz")
-
+    file_name = os.path.basename(file_path)
+    tmp_archive_path = os.path.join(settings.TMP_DIR, f".{file_name}.tar.gz")
     zip_command = f"tar -cz --no-xattrs -f {tmp_archive_path} "
+    
     options = file_path
 
     if os.path.isdir(file_path):
@@ -259,8 +295,14 @@ async def download_file(file_name: str, background_tasks: BackgroundTasks) -> st
     return file_path
 
 
-def get_size(path: str, human: bool = False) -> int | str:
-    file_size = os.path.getsize(path)
+def format_file_size(file_size: int, human: bool = False) -> int | str:
+    """
+    Get size of file in bytes or human readable format.
+
+    :param file_size: Size of file in bytes.
+    :param human: Boolean flag indicating if size should be human readable.
+    :return: int | str: Size of file in bytes or human readable format.
+    """
     if not human:
         return file_size
 
@@ -289,8 +331,8 @@ async def ls(file_path: str) -> list[File]:
             File(
                 name=file,
                 type=FileType.FOLDER if os.path.isdir(os.path.join(base_path, file)) else FileType.FILE,
-                size=get_size(os.path.join(base_path, file)),
-                size_human=get_size(os.path.join(base_path, file), human=True),
+                # size=get_size(os.path.join(base_path, file)),
+                # size_human=get_size(os.path.join(base_path, file), human=True),
             )
             for file in listdir
         ]
@@ -299,8 +341,8 @@ async def ls(file_path: str) -> list[File]:
             File(
                 name=os.path.basename(file_path),
                 type=FileType.FILE,
-                size=get_size(base_path),
-                size_human=get_size(base_path, human=True)
+                # size=get_size(base_path),
+                # size_human=get_size(base_path, human=True)
             )
         ]
 
@@ -316,3 +358,22 @@ def needs_to_be_archived(file_path: str) -> bool:
         return True
 
     return False
+
+
+def health_check():
+    disk_total, disk_used, disk_free = shutil.disk_usage(settings.UPLOAD_DIR)
+    memory = psutil.virtual_memory()
+    return {
+        "status": "healthy",
+        "disk": {
+            "total": format_file_size(disk_total, human=True),
+            "used": format_file_size(disk_used, human=True),
+            "free": format_file_size(disk_free, human=True),
+            "percent_used": f"{(disk_used / disk_total) * 100:.2f}%",
+        },
+        "memory": {
+            "total": format_file_size(memory.total, human=True),
+            "available": format_file_size(memory.available, human=True),
+            "percent_used": f"{memory.percent:.2f}%",
+        }
+    }

@@ -5,8 +5,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from app.logger import get_logger
 from app.router import router
 from app.exceptions import Unauthorized
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+
+logger = get_logger(__name__)
+limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
@@ -23,12 +31,12 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(debug=True, lifespan=lifespan)
 app.include_router(router)
 
 
 @app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
+async def authenticate_request(request: Request, call_next):
     """
     Authenticate request token from Authorization header
 
@@ -36,14 +44,34 @@ async def add_process_time_header(request: Request, call_next):
     :param call_next: FastAPI request handler
     :return:
     """
-    if "authorization" not in request.headers:
-        return Unauthorized
+    try:
+        if "authorization" not in request.headers:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "No authorization header provided"},
+            )
+        
+        auth_header = request.headers["authorization"]
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Invalid authorization header format"},
+            )
 
-    token = request.headers["authorization"].split(" ")[-1]
+        token = auth_header.split(" ")[-1]
 
-    for creds in request.app.state.tokens:
-        if token == creds.get("token"):
-            response = await call_next(request)
-            return response
-    else:
-        return Unauthorized
+        for creds in request.app.state.tokens:
+            if token == creds.get("token"):
+                response = await call_next(request)
+                return response
+        
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "Invalid token"}
+        )
+    except Exception as e:
+        logger.error(str(e))
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": f"Internal server error"}
+        )
