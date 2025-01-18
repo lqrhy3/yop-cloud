@@ -36,8 +36,7 @@ from fastapi import (
 )
 
 from app.logger import get_logger
-from app.models import File, FileType
-from app.services_old import get_size
+from app.models import File, FileType, SIZE_UNITS
 from app.settings import Settings
 
 logger = get_logger(__name__)
@@ -338,3 +337,16 @@ def needs_to_be_archived(file_path: str) -> bool:
         return True
 
     return False
+
+
+def get_size(path: str, human: bool = False) -> int | str:
+    file_size = os.path.getsize(path)
+    if not human:
+        return file_size
+
+    i = 0
+    while file_size > 1024:
+        i += 1
+        file_size = file_size / 1024
+    return f"{int(file_size) if i == 0 else f'{file_size:.2f}'} {SIZE_UNITS[i]}"
+
