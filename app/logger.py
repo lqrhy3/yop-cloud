@@ -3,8 +3,7 @@ import datetime as dt
 import json
 import logging
 
-from app import settings
-
+from app.settings import Settings
 
 LOG_RECORD_BUILTIN_ATTRS = {
     "args",
@@ -75,6 +74,7 @@ class MyJSONFormatter(logging.Formatter):
 
 
 def setup_logging():
+    settings = Settings()
     with open(settings.LOGGER_CONFIG_PATH, "r") as f:
         config = json.load(f)
     logging.config.dictConfig(config)

@@ -7,7 +7,7 @@ services:
             - "8080:8080"
         volumes:
             - ./:/app
-            - ${STORAGE_DATA_PATH}:/storage
+            - ${LOCAL_STORAGE_DATA_PATH}:/storage_data
             - ./logs:/logs
 
     nginx:

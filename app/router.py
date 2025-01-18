@@ -17,12 +17,12 @@ Classes and Functions:
 - Individual route handlers for various API actions, such as CRUD operations.
 """
 
-from fastapi import APIRouter, Request, Response, BackgroundTasks, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, BackgroundTasks, status
 from fastapi.responses import JSONResponse, FileResponse
 
+from app.dependencies import ArchiveServiceDep, FileServiceDep
 from app.logger import get_logger
 from app import (services, settings, models)
-
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -40,22 +40,30 @@ async def health_check():
 
 
 @router.post("/upload/")
-async def upload_file(request: Request):
+async def upload_file(
+        request: Request,
+        background_tasks: BackgroundTasks,
+        file_service: FileServiceDep,
+        archive_service: ArchiveServiceDep
+):
     """
-    Upload a file to disk. It can store file of any type.
-    If the header X-Is-Archive is specified, tmp tar.gz archive will be created and unzipped
-
-    :param request: FastAPI Request object. See https://fastapi.tiangolo.com/reference/request/#request-class
-    :return:
-    200:
-        {
-            "file_name": "sanjar's dickpick",
-            "message": "Upload successful"
-        }
+    Upload a file to disk and optionally unzip it.
     """
     logger.info("Called /upload")
-    file_name = await services.save_file(request)
-    return JSONResponse({"file_name": file_name, "message": "Upload successful"})
+
+    try:
+        file_name, file_path, is_archive = await file_service.save_file(request)
+    except HTTPException as e:
+        logger.error(f"Error saving file: {e.detail}")
+        raise
+
+    if is_archive:
+        background_tasks.add_task(archive_service.unzip_file, file_path)
+
+    return JSONResponse({
+        "file_name": file_name,
+        "message": "Upload successful"
+    })
 
 
 @router.get("/download/{file_name:path}", response_class=FileResponse)

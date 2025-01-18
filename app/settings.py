@@ -1,23 +1,17 @@
-"""
-settings.py
+from pydantic_settings import BaseSettings
 
-This module defines the config for the FastAPI application.
-It contains configurations and settings used by the Django project. These include:
 
- - UPLOAD_DIR: The path to the uploaded files.
- - TMP_DIR: The path to the temporary directory.
- - LOGGER_CONFIG_PATH: The path to the logging configuration file.
- - ARCHIVE_HEADER: The name of the archive header.
- - ARCHIVE_EXTENSION: Extension of the archive file.
- - ZIP_COMMAND: Command to compress the archive file.
- - UNZIP_COMMAND: Command to uncompress the archive file.
+class Settings(BaseSettings):
+    STORAGE_DATA_PATH: str = "/storage_data"
+    TMP_DATA_PATH: str = "/tmp"
 
-"""
+    MAX_FILE_NAME_LENGTH: int = 256
 
-UPLOAD_DIR = '/storage'
-TMP_DIR = '/tmp/storage'
-LOGGER_CONFIG_PATH = '/app/logger.json'
-ARCHIVE_HEADER = 'X-Is-Archive'
-ARCHIVE_EXTENSION = '.tar.gz'
-ZIP_COMMAND = ''
-UNZIP_COMMAND = ''
+    ARCHIVE_HEADER: str = "X-Is-Archive"
+
+    ARCHIVE_EXTENSION: str = ".tar.gz"
+
+    LOGGER_CONFIG_PATH: str = "/app/logger.json"
+
+    # class Config:
+    #     env_file = ".env"
