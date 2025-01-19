@@ -23,8 +23,8 @@ This file may include functions such as:
 import os
 import re
 import shutil
-import time
 from pathlib import Path
+from weakref import WeakValueDictionary
 
 import aiofiles
 import asyncio
@@ -36,7 +36,7 @@ from fastapi import (
 )
 
 from app.logger import get_logger
-from app.models import File, FileType, SIZE_UNITS
+from app.models import File, FileType
 from app.settings import Settings
 
 logger = get_logger(__name__)
@@ -54,28 +54,13 @@ class FileService:
 
         self._valid_file_name_pattern = re.compile(r"^[a-zA-Z0-9._\-\s]+$")
 
-    async def save_file(self, request: Request, background_tasks: BackgroundTasks) -> str:
+        self._upload_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
+
+    async def save_file(self, request: Request, background_tasks: BackgroundTasks, force: bool) -> str:
         """
         Save the file from the request to the disk.
         Returns the file name, file path, and whether it is an archive.
         """
-        content_length = request.headers.get("content-length")
-        if content_length is None:
-            raise HTTPException(
-                status_code=status.HTTP_411_LENGTH_REQUIRED,
-                detail="Content-Length header is required"
-            )
-            
-        try:
-            file_size = int(content_length)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid Content-Length header"
-            )
-            
-        await self._check_storage_space(file_size)
-
         content_disposition = request.headers.get("content-disposition")
         if not content_disposition:
             raise HTTPException(
@@ -87,40 +72,77 @@ class FileService:
         self._validate_file_path(save_path)
 
         is_archive = request.headers.get(self._is_archive_header, "false").lower() == "true"
-
-        temp_file_path, temp_dir_path, temp_file_name = self._prepare_paths(
-            self._temp_data_path, save_path, is_archive
-        )
-
-        try:
-            async with aiofiles.open(temp_file_path, "wb") as f:
-                async for chunk in request.stream():
-                    await f.write(chunk)
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error writing file to the disk: {str(e)}"
-            )
-
-        file_path, dir_path, file_name = self._prepare_paths(
+        file_path, dir_path, file_name = self._get_paths(
             self._storage_data_path, save_path, is_archive
         )
 
-        logger.debug(f"Moving file from {temp_file_path} to {file_path}")
-        try:
-            os.rename(temp_file_path, file_path)
-            os.removedirs(temp_dir_path)
-        except OSError as e:
-            logger.error(f"Failed to move and clean temp file: {str(e)}")
+        if (self._storage_data_path / save_path).exists() and not force:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error moving and cleaning temp file: {str(e)}"
+                status_code=status.HTTP_409_CONFLICT,
+                detail="File already exists. If you want to overwrite it, use the 'force' parameter."
             )
 
-        if is_archive:
-            background_tasks.add_task(self._unzip_file, file_path)
+        content_length = request.headers.get("content-length")
+        if content_length is None:
+            logger.debug("Content-Length header not found ERROR")
+            raise HTTPException(
+                status_code=status.HTTP_411_LENGTH_REQUIRED,
+                detail="Content-Length header is required"
+            )
+
+        try:
+            file_size = int(content_length)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Content-Length header"
+            )
+
+        await self._check_storage_space(file_size)
+
+        temp_file_path, temp_dir_path, temp_file_name = self._get_paths(
+            self._temp_data_path, save_path, is_archive
+        )
+        if not temp_dir_path.exists():
+            os.makedirs(temp_dir_path)
+
+        lock = self._get_upload_lock(str(save_path))
+        if lock.locked():
+            raise HTTPException(
+                status_code=status.HTTP_423_LOCKED,
+                detail="File is currently being uploaded by another user. Please try again later."
+            )
+
+        async with lock:
+            try:
+                async with aiofiles.open(temp_file_path, "wb") as f:
+                    async for chunk in request.stream():
+                        await f.write(chunk)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error writing file to the disk: {str(e)}"
+                )
+
+            if not dir_path.exists():
+                os.makedirs(dir_path, exist_ok=True)
+
+            logger.debug(f"Moving file from {temp_file_path} to {file_path}")
+            try:
+                os.rename(temp_file_path, file_path)
+                os.removedirs(temp_dir_path)
+            except OSError as e:
+                logger.error(f"Failed to move and clean temp file: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error moving and cleaning temp file: {str(e)}"
+                )
+
+            if is_archive:
+                # TODO: lock will be released during unzip_file potentially resulting in corrupted data
+                background_tasks.add_task(self._unzip_file, file_path)
         
-        return temp_file_name
+            return temp_file_name
 
     async def download_file(self, download_path: str, background_tasks: BackgroundTasks) -> str:
         download_path = Path(download_path)
@@ -176,6 +198,9 @@ class FileService:
                 )
             ]
 
+    def delete_file(self, delete_path: str | Path, background_tasks: BackgroundTasks):
+        background_tasks.add_task(self._delete_file, delete_path)
+
     async def disk_usage(self) -> dict[str, str]:
         usage = shutil.disk_usage(self._storage_data_path)
         return {
@@ -185,7 +210,7 @@ class FileService:
         }
 
     async def _archive_file(self, file_path: Path) -> Path:
-        temp_archive_path = self._temp_data_path / f"{file_path.name}_{hash(time.time())}.tar.gz"
+        temp_archive_path = self._temp_data_path / f"{file_path.name}_{hash(file_path)}.tar.gz"
 
         zip_command = f"tar -cz --no-xattrs -f {temp_archive_path} -C {file_path} ."
         try:
@@ -212,9 +237,6 @@ class FileService:
             )
 
         return temp_archive_path
-
-    def delete_file(self, delete_path: str | Path, background_tasks: BackgroundTasks):
-        background_tasks.add_task(self._delete_file, delete_path)
 
     def _delete_file(self, delete_path: str | Path):
         """
@@ -247,16 +269,12 @@ class FileService:
                 detail=f"Error deleting file: {str(e)}"
             )
 
-    def _prepare_paths(self, root_dir: Path, path: Path, is_archive: bool) -> tuple[Path, Path, str]:
+    def _get_paths(self, root_dir: Path, path: Path, is_archive: bool) -> tuple[Path, Path, str]:
         file_path = (root_dir / path).resolve()
         if is_archive:
             file_path = file_path / f".{file_path.name}{self._archive_extension}"
 
-        dir_path, file_name = file_path.parent, file_path.name
-        if not dir_path.exists():
-            os.makedirs(dir_path)
-
-        return file_path, dir_path, file_name
+        return file_path, file_path.parent, file_path.name
 
     async def _unzip_file(self, file_path: Path):
         """
@@ -281,6 +299,13 @@ class FileService:
 
             logger.debug(f"Unzipped file successfully: {file_path}")
 
+        except Exception as e:
+            logger.error(f"Unzipping failed: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error processing archive: {str(e)}"
+            )
+        finally:
             try:
                 os.remove(file_path)
                 logger.debug(f"Removed archive file: {file_path}")
@@ -288,13 +313,6 @@ class FileService:
                 logger.error(f"Failed to remove archive file {file_path}: {str(e)}")
                 # Do not throw an exception here, as it is not critical to the uploading process
                 # TODO: consider potential problems because of this?
-
-        except Exception as e:
-            logger.error(f"Unzipping failed: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error processing archive: {str(e)}"
-            )
 
     def _validate_file_path(self, file_path: Path):
         """
@@ -371,6 +389,12 @@ class FileService:
                 status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
                 detail=f"Adding this file would exceed the maximum storage limit of {format_size(max_storage_size)}"
             )
+
+    def _get_upload_lock(self, file_path: str) -> asyncio.Lock:
+        if file_path not in self._upload_locks:
+            lock = asyncio.Lock()
+            self._upload_locks[file_path] = lock
+        return self._upload_locks[file_path]
 
 
 def needs_to_be_archived(file_path: str) -> bool:

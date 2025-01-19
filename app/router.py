@@ -17,7 +17,7 @@ Classes and Functions:
 - Individual route handlers for various API actions, such as CRUD operations.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, BackgroundTasks, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, BackgroundTasks, status
 from fastapi.responses import JSONResponse, FileResponse
 
 from app.dependencies import FileServiceDep
@@ -44,6 +44,7 @@ async def upload_file(
         request: Request,
         background_tasks: BackgroundTasks,
         file_service: FileServiceDep,
+        force: bool = Query(default=False, description="Force file overwrite if it already exists"),
 ):
     """
     Upload a file to disk and optionally unzip it.
@@ -51,7 +52,7 @@ async def upload_file(
     logger.info("Called /upload")
 
     try:
-        file_name = await file_service.save_file(request, background_tasks)
+        file_name = await file_service.save_file(request, background_tasks, force)
     except HTTPException as e:
         logger.error(f"Error saving file: {e.detail}")
         raise
