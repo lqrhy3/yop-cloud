@@ -104,3 +104,14 @@ async def ls(file_path: str, file_service: FileServiceDep) -> list[models.File]:
     """
     logger.info("Called /ls", extra={"file_path": file_path})
     return await file_service.list_files(file_path)
+
+
+@router.get("/disk_usage/")
+async def disk_usage(file_service: FileServiceDep):
+    """
+    :param file_service: FileService dependency.
+    :return: list[File]: List of file paths.
+    """
+    logger.info("Called /disk_usage")
+    disk_usage = await file_service.disk_usage()
+    return JSONResponse(disk_usage)

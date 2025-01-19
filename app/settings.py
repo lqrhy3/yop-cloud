@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     STORAGE_DATA_PATH: str = "/storage_data"
     TEMP_DATA_PATH: str = "/storage_data/.tmp"
 
+    DISK_USAGE_OFFSET: int = 1 * 1024 * 1024 * 1024  # 5GB
+
     MAX_FILE_NAME_LENGTH: int = 256
 
     IS_ARCHIVE_HEADER: str = "X-Is-Archive"

@@ -46,6 +46,7 @@ class FileService:
     def __init__(self, settings: Settings):
         self._storage_data_path = Path(settings.STORAGE_DATA_PATH)
         self._temp_data_path = Path(settings.TEMP_DATA_PATH)
+        self._disk_usage_offset = settings.DISK_USAGE_OFFSET
 
         self._is_archive_header = settings.IS_ARCHIVE_HEADER
         self._archive_extension = settings.ARCHIVE_EXTENSION
@@ -58,6 +59,23 @@ class FileService:
         Save the file from the request to the disk.
         Returns the file name, file path, and whether it is an archive.
         """
+        content_length = request.headers.get("content-length")
+        if content_length is None:
+            raise HTTPException(
+                status_code=status.HTTP_411_LENGTH_REQUIRED,
+                detail="Content-Length header is required"
+            )
+            
+        try:
+            file_size = int(content_length)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Content-Length header"
+            )
+            
+        await self._check_storage_space(file_size)
+
         content_disposition = request.headers.get("content-disposition")
         if not content_disposition:
             raise HTTPException(
@@ -134,24 +152,37 @@ class FileService:
 
         if path.is_dir():
             listdir = path.glob("*")
-            return [
-                File(
+            files = []
+            for file in listdir:
+                size = os.path.getsize(file)
+                size_formatted = format_size(size)
+                files.append(File(
                     name=file.name,
                     type=FileType.FOLDER if file.is_dir() else FileType.FILE,
-                    size=get_size(str(file)),
-                    size_human=get_size(str(file), human=True),
-                )
-                for file in listdir
-            ]
+                    size=size,
+                    size_human=size_formatted
+                ))
+            return files
         else:
+            size = os.path.getsize(str(path))
+            size_formatted = format_size(size)
+
             return [
                 File(
                     name=path.name,
                     type=FileType.FILE,
-                    size=get_size(str(path)),
-                    size_human=get_size(str(path), human=True)
+                    size=size,
+                    size_human=size_formatted
                 )
             ]
+
+    async def disk_usage(self) -> dict[str, str]:
+        usage = shutil.disk_usage(self._storage_data_path)
+        return {
+            "total": format_size(usage.total),
+            "used": format_size(usage.used),
+            "free": format_size(usage.free),
+        }
 
     async def _archive_file(self, file_path: Path) -> Path:
         temp_archive_path = self._temp_data_path / f"{file_path.name}_{hash(time.time())}.tar.gz"
@@ -325,6 +356,22 @@ class FileService:
 
         return full_path
 
+    async def _check_storage_space(self, required_size: int) -> None:
+        try:
+            usage = shutil.disk_usage(self._storage_data_path)
+        except OSError:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to check storage space"
+            )
+
+        if required_size > usage.free - self._disk_usage_offset:
+            max_storage_size = usage.total - self._disk_usage_offset
+            raise HTTPException(
+                status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+                detail=f"Adding this file would exceed the maximum storage limit of {format_size(max_storage_size)}"
+            )
+
 
 def needs_to_be_archived(file_path: str) -> bool:
     """
@@ -339,14 +386,10 @@ def needs_to_be_archived(file_path: str) -> bool:
     return False
 
 
-def get_size(path: str, human: bool = False) -> int | str:
-    file_size = os.path.getsize(path)
-    if not human:
-        return file_size
-
-    i = 0
-    while file_size > 1024:
-        i += 1
-        file_size = file_size / 1024
-    return f"{int(file_size) if i == 0 else f'{file_size:.2f}'} {SIZE_UNITS[i]}"
+def format_size(size: int) -> str:
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} PB"
 
