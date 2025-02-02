@@ -44,7 +44,9 @@ async def upload_file(
         request: Request,
         background_tasks: BackgroundTasks,
         file_service: FileServiceDep,
-        force: bool = Query(default=False, description="Force file overwrite if it already exists"),
+        force: bool = Query(
+            default=False, description="Force file overwrite if it already exists"
+        ),
 ):
     """
     Upload a file to disk and optionally unzip it.
@@ -97,14 +99,22 @@ def delete_file(file_path: str, background_tasks: BackgroundTasks, file_service:
 
 
 @router.get("/ls/{file_path:path}", response_model=list[models.File])
-async def ls(file_path: str, file_service: FileServiceDep) -> list[models.File]:
+async def ls(
+        file_path: str,
+        file_service: FileServiceDep,
+        verbose: bool = Query(
+            efault=False, description="Return file type and size or not"
+        ),
+
+) -> list[models.File]:
     """
     :param file_path: File to ls.
     :param file_service: FileService dependency.
+    :param verbose: Return file type and size or not.
     :return: list[File]: List of file paths.
     """
-    logger.info("Called /ls", extra={"file_path": file_path})
-    return await file_service.list_files(file_path)
+    logger.info("Called /ls", extra={"file_path": file_path, "verbose": verbose})
+    return await file_service.list_files(file_path, verbose)
 
 
 @router.get("/disk_usage/")

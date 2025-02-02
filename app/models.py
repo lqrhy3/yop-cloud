@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -13,9 +14,9 @@ class User(BaseModel):
 
 class File(BaseModel):
     name: str
-    type: str
-    size: int
-    size_human: str
+    type: Optional[str] = None
+    size: Optional[int] = None
+    size_human: Optional[str] = None
 
 
 class FileType(Enum):

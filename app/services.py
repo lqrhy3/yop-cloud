@@ -42,6 +42,9 @@ from app.settings import Settings
 logger = get_logger(__name__)
 
 
+_upload_locks = WeakValueDictionary()  # very sorry for this
+
+
 class FileService:
     def __init__(self, settings: Settings):
         self._storage_data_path = Path(settings.STORAGE_DATA_PATH)
@@ -54,7 +57,7 @@ class FileService:
 
         self._valid_file_name_pattern = re.compile(r"^[a-zA-Z0-9._\-\s]+$")
 
-        self._upload_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
+        self._upload_locks: WeakValueDictionary[str, asyncio.Lock] = _upload_locks
 
     async def save_file(self, request: Request, background_tasks: BackgroundTasks, force: bool) -> str:
         """
@@ -82,20 +85,20 @@ class FileService:
                 detail="File already exists. If you want to overwrite it, use the 'force' parameter."
             )
 
-        content_length = request.headers.get("content-length")
-        if content_length is None:
+        file_size = request.headers.get("x-file-size")
+        if file_size is None:
             logger.debug("Content-Length header not found ERROR")
             raise HTTPException(
                 status_code=status.HTTP_411_LENGTH_REQUIRED,
-                detail="Content-Length header is required"
+                detail="X-File-Size header is required"
             )
 
         try:
-            file_size = int(content_length)
+            file_size = int(file_size)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid Content-Length header"
+                detail="Invalid X-File-Size header"
             )
 
         await self._check_storage_space(file_size)
@@ -113,12 +116,16 @@ class FileService:
                 detail="File is currently being uploaded by another user. Please try again later."
             )
 
+        if request.headers.get('x-expect', '').lower() == '100-continue':
+            return ""
+
         async with lock:
             try:
                 async with aiofiles.open(temp_file_path, "wb") as f:
                     async for chunk in request.stream():
                         await f.write(chunk)
             except Exception as e:
+                os.remove(temp_file_path)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Error writing file to the disk: {str(e)}"
@@ -161,7 +168,7 @@ class FileService:
 
         return str(file_path)
 
-    async def list_files(self, list_path: str) -> list[File]:
+    async def list_files(self, list_path: str, verbose: bool) -> list[File]:
         list_path = Path(list_path)
         self._validate_file_path(list_path)
         path = (self._storage_data_path / list_path).resolve()
@@ -173,30 +180,21 @@ class FileService:
             )
 
         if path.is_dir():
-            listdir = path.glob("*")
-            files = []
-            for file in listdir:
-                size = os.path.getsize(file)
-                size_formatted = format_size(size)
-                files.append(File(
-                    name=file.name,
-                    type=FileType.FOLDER if file.is_dir() else FileType.FILE,
-                    size=size,
-                    size_human=size_formatted
-                ))
+            files = [self._get_file_info(path, verbose) for path in path.glob("*")]
             return files
         else:
-            size = os.path.getsize(str(path))
-            size_formatted = format_size(size)
+            return [self._get_file_info(path, verbose)]
 
-            return [
-                File(
-                    name=path.name,
-                    type=FileType.FILE,
-                    size=size,
-                    size_human=size_formatted
-                )
-            ]
+    @staticmethod
+    def _get_file_info(path: Path, verbose: bool) -> File:
+        info = {'name': path.name}
+        if verbose:
+            size = os.path.getsize(str(path))
+            info['type'] = FileType.FOLDER if path.is_dir() else FileType.FILE
+            info['size'] = size
+            info['size_human'] = format_size(size)
+
+        return File(**info)
 
     def delete_file(self, delete_path: str | Path, background_tasks: BackgroundTasks):
         background_tasks.add_task(self._delete_file, delete_path)
