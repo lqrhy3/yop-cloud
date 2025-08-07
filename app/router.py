@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/health", status_code=status.HTTP_200_OK)
+@router.get("/health-check", status_code=status.HTTP_200_OK)
 async def health_check():
     """
     Health check endpoint to verify that the service is running.
