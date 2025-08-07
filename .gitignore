@@ -333,3 +333,5 @@ bruno/
 logs/
 
 data/
+db_data/
+s3data/

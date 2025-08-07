@@ -51,7 +51,7 @@ services:
   s3:
     image: quay.io/minio/minio
     volumes:
-      - ./data:/data
+      - ./s3data:/data
     env_file:
       - .env
     environment:
@@ -67,11 +67,11 @@ services:
       context: writer
       dockerfile: Dockerfile
 
-  reader:
-    <<: *x-app-common
-    build:
-      context: reader
-      dockerfile: Dockerfile
+  # reader:
+  #   <<: *x-app-common
+  #   build:
+  #     context: reader
+  #     dockerfile: Dockerfile
 
   nginx:
     image: nginx:alpine
@@ -81,8 +81,10 @@ services:
       - ./nginx:/etc/nginx/conf.d:ro
     depends_on:
       - writer
-      - reader
 
 volumes:
   db_data:
   logs:
+  nginx:
+  s3data:
+  alembic:

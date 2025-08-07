@@ -17,7 +17,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 ENV PYTHONPATH=/code
 
-COPY ./pyproject.toml ./uv.lock ./alembic.ini /code/
+COPY ./pyproject.toml ./uv.lock /code/
+
+# COPY ./alembic.ini /code/
 
 COPY ./app /code/app
 
