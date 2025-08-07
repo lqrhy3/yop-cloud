@@ -1,28 +1,90 @@
-version: '2.3'
+x-app-common: &x-app-common
+  image: '${DOCKER_IMAGE_BACKEND?Variable not set}:${TAG-latest}'
+  restart: always
+  depends_on:
+    db:
+      condition: service_healthy
+      restart: true
+  volumes:
+    - ./alembic:/code/alembic
+  env_file:
+    - .env
+  environment:
+    - DOMAIN=${DOMAIN}
+    - ENVIRONMENT=${ENVIRONMENT}
+    - PROJECT_NAME=${PROJECT_NAME?Variable not set}
+    - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
+    - SECRET_KEY=${SECRET_KEY?Variable not set}
+    - POSTGRES_SERVER=db
+    - POSTGRES_PORT=${POSTGRES_PORT}
+    - POSTGRES_DB=${POSTGRES_DB}
+    - POSTGRES_USER=${POSTGRES_USER?Variable not set}
+    - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?Variable not set}
+    - SENTRY_DSN=${SENTRY_DSN}
+  healthcheck:
+    test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health-check" ]
+    interval: 100s
+    timeout: 5s
+    retries: 5
+  ports:
+    - "${BACKEND_PORT:-8000}:8000"
 
 services:
-    app:
-        build: .
-        ports:
-            - "8080:8080"
-        volumes:
-            - ./:/app
-            - ${LOCAL_STORAGE_DATA_PATH}:/storage_data
-            - ./logs:/logs
+  db:
+    image: postgres:17
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    volumes:
+      - ./db_data:/var/lib/postgresql/data/pgdata
+    env_file: .env
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?Variable not set}
+      - POSTGRES_USER=${POSTGRES_USER?Variable not set}
+      - POSTGRES_DB=${POSTGRES_DB?Variable not set}
 
-    nginx:
-        image: nginx:alpine
-        ports:
-            - "80:80"
-        volumes:
-            - ./nginx:/etc/nginx/conf.d:ro
-        depends_on:
-            - app
+  s3:
+    image: quay.io/minio/minio
+    volumes:
+      - ./s3data:/data
+    env_file:
+      - .env
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER?Variable not set}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD?Variable not set}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
 
-#    tg-bot:
-#        image: lqrhy3/yop-cloud-telegram-bot:latest
-#        env_file:
-#            - .tg-bot.env
+  writer:
+    <<: *x-app-common
+    build:
+      context: writer
+      dockerfile: Dockerfile
+
+  # reader:
+  #   <<: *x-app-common
+  #   build:
+  #     context: reader
+  #     dockerfile: Dockerfile
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+    depends_on:
+      - writer
 
 volumes:
-    logs:
+  db_data:
+  logs:
+  nginx:
+  s3data:
+  alembic:

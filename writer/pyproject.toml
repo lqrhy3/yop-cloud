@@ -1,0 +1,19 @@
+[project]
+name = "yop-cloud"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.116.1",
+    "psycopg2-binary>=2.9.10",
+    "pydantic-settings>=2.10.1",
+    "sentry-sdk>=2.34.1",
+    "uvicorn>=0.35.0",
+]
+
+[dependency-groups]
+dev = [
+    "aiofiles>=24.1.0",
+    "hashfs>=0.7.2",
+]
